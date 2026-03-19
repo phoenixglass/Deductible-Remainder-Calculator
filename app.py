@@ -41,8 +41,15 @@ default_data = pd.DataFrame(
     ]
 )
 
+# Track editor key so clearing forces a full re-render of the data editor
+if "editor_key" not in st.session_state:
+    st.session_state.editor_key = 0
+if "editor_data" not in st.session_state:
+    st.session_state.editor_data = default_data
+
 edited_df = st.data_editor(
-    default_data,
+    st.session_state.editor_data,
+    key=f"editor_{st.session_state.editor_key}",
     num_rows="dynamic",
     use_container_width=True,
     column_config={
@@ -94,45 +101,54 @@ def calculate_patient_responsibility(df: pd.DataFrame, deductible_remaining: flo
 
     return pd.DataFrame(results)
 
-if st.button("Calculate"):
-    clean_df = edited_df.copy()
+col_calc, col_clear = st.columns([1, 1])
 
-    # Basic cleanup
-    clean_df = clean_df.dropna(subset=["Rate"])
-    clean_df = clean_df[clean_df["Rate"] >= 0]
+with col_calc:
+    if st.button("Calculate", use_container_width=True):
+        clean_df = edited_df.copy()
 
-    if clean_df.empty:
-        st.warning("Add at least one service line with a valid rate.")
-    else:
-        sorted_df = sort_services(clean_df, processing_order)
-        result_df = calculate_patient_responsibility(
-            sorted_df,
-            ded_remaining,
-            coinsurance_pct,
-        )
+        # Basic cleanup
+        clean_df = clean_df.dropna(subset=["Rate"])
+        clean_df = clean_df[clean_df["Rate"] >= 0]
 
-        st.subheader("Results")
-        st.dataframe(result_df, use_container_width=True)
-
-        total_rate = result_df["Rate"].sum()
-        total_ded_applied = result_df["Ded Applied"].sum()
-        total_coinsurance = result_df["Coinsurance Amt"].sum()
-        total_patient_resp = result_df["Patient Resp"].sum()
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total Charges", f"${total_rate:,.2f}")
-        c2.metric("Total Ded Applied", f"${total_ded_applied:,.2f}")
-        c3.metric("Total Coinsurance", f"${total_coinsurance:,.2f}")
-        c4.metric("Total Patient Resp", f"${total_patient_resp:,.2f}")
-
-        st.subheader("Line-by-line explanation")
-        for _, row in result_df.iterrows():
-            st.write(
-                f"**{row['Service']}** ({row['Date']}): "
-                f"Rate ${row['Rate']:.2f} | "
-                f"Ded before ${row['Ded Before']:.2f} | "
-                f"Ded applied ${row['Ded Applied']:.2f} | "
-                f"Remaining after ded ${row['Remaining After Ded']:.2f} | "
-                f"Coinsurance ${row['Coinsurance Amt']:.2f} | "
-                f"Patient responsibility **${row['Patient Resp']:.2f}**"
+        if clean_df.empty:
+            st.warning("Add at least one service line with a valid rate.")
+        else:
+            sorted_df = sort_services(clean_df, processing_order)
+            result_df = calculate_patient_responsibility(
+                sorted_df,
+                ded_remaining,
+                coinsurance_pct,
             )
+
+            st.subheader("Results")
+            st.dataframe(result_df, use_container_width=True)
+
+            total_rate = result_df["Rate"].sum()
+            total_ded_applied = result_df["Ded Applied"].sum()
+            total_coinsurance = result_df["Coinsurance Amt"].sum()
+            total_patient_resp = result_df["Patient Resp"].sum()
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Total Charges", f"${total_rate:,.2f}")
+            c2.metric("Total Ded Applied", f"${total_ded_applied:,.2f}")
+            c3.metric("Total Coinsurance", f"${total_coinsurance:,.2f}")
+            c4.metric("Total Patient Resp", f"${total_patient_resp:,.2f}")
+
+            st.subheader("Line-by-line explanation")
+            for _, row in result_df.iterrows():
+                st.write(
+                    f"**{row['Service']}** ({row['Date']}): "
+                    f"Rate ${row['Rate']:.2f} | "
+                    f"Ded before ${row['Ded Before']:.2f} | "
+                    f"Ded applied ${row['Ded Applied']:.2f} | "
+                    f"Remaining after ded ${row['Remaining After Ded']:.2f} | "
+                    f"Coinsurance ${row['Coinsurance Amt']:.2f} | "
+                    f"Patient responsibility **${row['Patient Resp']:.2f}**"
+                )
+
+with col_clear:
+    if st.button("Clear", use_container_width=True):
+        st.session_state.editor_data = pd.DataFrame(columns=["Date", "Service", "Rate"])
+        st.session_state.editor_key += 1
+        st.rerun()
